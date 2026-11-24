@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16110e">
+<meta name="robots" content="noindex">
+<title>Painel Benezi</title>
+<!--
+  Painel do fluxo de issues do Sistema Benezi.
+  Só LÊ a API do GitHub. Não tem nenhum segredo neste arquivo: o token de leitura
+  é digitado no celular e fica salvo só no navegador do aparelho (localStorage).
+  As etapas vêm das labels etapa:* que os workflows do repo do Benezi colocam nas issues.
+-->
+<style>
+  :root{
+    --bg:#16110e; --card:#221a15; --card2:#2b211b; --borda:#3a2d25; --texto:#f3ece6; --fraco:#a8988b;
+    --laranja:#ff7a1a; --verde:#3ddc6b; --vermelho:#ff5a5a; --amarelo:#ffd23f; --azul:#4da3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--texto);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       padding:12px 12px calc(24px + env(safe-area-inset-bottom))}
+  h1{font-size:18px;margin:4px 0 12px;display:flex;align-items:center;gap:8px}
+  h1 small{color:var(--fraco);text-align:right;font-weight:400;font-size:12px;margin-left:auto}
+  h2{font-size:13px;letter-spacing:.08em;color:var(--fraco);margin:22px 0 10px;text-transform:uppercase}
+  button{font:inherit;color:inherit;background:var(--card2);border:1px solid var(--borda);border-radius:10px;padding:8px 12px;cursor:pointer}
+  button.primario{background:var(--laranja);border-color:var(--laranja);color:#1b0f06;font-weight:700}
+  a{color:var(--azul);text-decoration:none}
+  .grade{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .num{background:var(--card);border:1px solid var(--borda);border-radius:12px;padding:10px;min-height:64px}
+  .num b{display:block;font-size:24px;line-height:1.1}
+  .num span{font-size:10.5px;color:var(--fraco);text-transform:uppercase;letter-spacing:.04em}
+  .num.alerta b{color:var(--vermelho)} .num.ok b{color:var(--verde)}
+  .ativo{background:var(--card);border:1px solid var(--borda);border-radius:14px;padding:14px;margin-top:12px}
+  .ativo .topo{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--fraco)}
+  .ativo .titulo{display:flex;gap:10px;align-items:flex-start;margin:6px 0}
+  .ativo .titulo h3{margin:0;font-size:19px;flex:1}
+  .ativo .pct{color:var(--laranja);font-size:26px;font-weight:800}
+  .barra{height:8px;background:var(--card2);border-radius:8px;overflow:hidden;margin-top:10px}
+  .barra i{display:block;height:100%;background:var(--laranja);border-radius:8px;transition:width .6s}
+  .pilula{display:inline-block;font-size:11px;border-radius:20px;padding:1px 8px;border:1px solid currentColor;margin-right:4px}
+  .aviso{background:#f3ece6;color:#2a1b12;border-radius:12px;padding:10px 12px;margin-top:12px;font-size:14px}
+  .aviso b{color:#d2561a}
+  .vazio{color:var(--fraco);text-align:center;padding:18px;border:1px dashed var(--borda);border-radius:12px}
+  /* arco das etapas */
+  .arco{position:relative;width:100%;max-width:380px;aspect-ratio:1/0.82;margin:8px auto 0}
+  .arco svg.linha{position:absolute;inset:0;width:100%;height:100%}
+  .no{position:absolute;transform:translate(-50%,-50%);text-align:center;width:92px}
+  .no .bola{width:58px;height:58px;margin:0 auto;border-radius:50%;display:grid;place-items:center;font-size:26px;
+            background:var(--card2);border:3px solid var(--borda);position:relative;filter:grayscale(1);opacity:.55}
+  .no.feito .bola{border-color:var(--verde);filter:none;opacity:1}
+  .no.feito .bola::after{content:"✓";position:absolute;right:-6px;top:-6px;background:var(--verde);color:#08210f;
+            width:20px;height:20px;border-radius:5px;font-size:13px;font-weight:900;display:grid;place-items:center}
+  .no.atual .bola{border-color:var(--laranja);filter:none;opacity:1;box-shadow:0 0 0 6px rgba(255,122,26,.18)}
+  .no.bloq .bola{border-color:var(--vermelho);filter:none;opacity:1}
+  .no small{display:block;margin-top:4px;font-size:11.5px;font-weight:600}
+  .no.feito small{color:var(--verde)} .no.atual small{color:var(--laranja)} .no.bloq small{color:var(--vermelho)}
+  .centro{position:absolute;left:50%;bottom:0;transform:translateX(-50%);text-align:center}
+  .centro .bola{width:112px;height:112px;border-radius:50%;margin:0 auto;display:grid;place-items:center;font-size:52px;
+                background:radial-gradient(circle at 40% 35%,#ff9a4d,#e5600d);border:4px solid #ffb07a;position:relative}
+  .centro .bola em{position:absolute;right:-14px;top:4px;background:#fff;color:#d2561a;font-style:normal;font-weight:800;
+                   border-radius:20px;padding:2px 8px;font-size:13px}
+  .centro b{display:block;margin-top:6px;color:var(--laranja);font-size:17px}
+  /* listas */
+  .item{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid var(--borda);border-radius:12px;
+        padding:10px 12px;margin-bottom:8px}
+  .item .ic{font-size:20px}
+  .item .tx{flex:1;min-width:0}
+  .item .tx div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .tx small{color:var(--fraco)}
+  .item .et{font-size:11px;color:var(--laranja);white-space:nowrap}
+  .abas{display:flex;gap:6px;margin-top:18px;overflow-x:auto}
+  .abas button{white-space:nowrap;font-size:13px;padding:6px 10px}
+  .abas button.sel{background:var(--laranja);color:#1b0f06;border-color:var(--laranja);font-weight:700}
+  /* configuração */
+  #config{max-width:480px;margin:30px auto}
+  #config label{display:block;margin:14px 0 4px;color:var(--fraco);font-size:13px}
+  #config input{width:100%;padding:10px;border-radius:10px;border:1px solid var(--borda);background:var(--card);color:var(--texto);font:inherit}
+  #config ol{color:var(--fraco);font-size:13px;padding-left:18px}
+  .rodape{display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:22px;color:var(--fraco);font-size:12px}
+  .erro{color:var(--vermelho);margin-top:10px}
+</style>
+</head>
+<body>
+
+<section id="config" hidden>
+  <h1>🍕 Painel Benezi</h1>
+  <p>Cole um token do GitHub <b>só de leitura</b>. Ele fica salvo só neste aparelho.</p>
+  <ol>
+    <li>GitHub → Settings → Developer settings → <b>Fine-grained tokens</b> → Generate new token</li>
+    <li>Resource owner: <b>benezi-dev</b> · Repository access: só o repo do sistema</li>
+    <li>Permissões (<b>Read-only</b>): Issues, Pull requests, Actions, Metadata</li>
+  </ol>
+  <label for="cfgRepo">Repositório</label>
+  <input id="cfgRepo" value="benezi-dev/novo-sistema-pizzaria-benezi" autocomplete="off" autocapitalize="off">
+  <label for="cfgToken">Token (github_pat_...)</label>
+  <input id="cfgToken" type="password" autocomplete="off" autocapitalize="off" placeholder="github_pat_...">
+  <p style="margin-top:16px"><button class="primario" id="btnSalvar">Salvar e abrir</button></p>
+  <p class="erro" id="cfgErro"></p>
+</section>
+
+<main id="painel" hidden>
+  <h1>🍕 Benezi <small id="atualizado">carregando…</small></h1>
+
+  <div class="grade" id="numeros"></div>
+  <div id="ativo"></div>
+  <div id="avisos"></div>
+
+  <h2>Etapas</h2>
+  <div class="arco" id="arco"></div>
+
+  <div class="abas" id="abas"></div>
+  <div id="lista" style="margin-top:10px"></div>
+
+  <div class="rodape">
+    <span id="limite"></span>
+    <span><button id="btnAtualizar">↻ Atualizar</button> <button id="btnSair">Trocar token</button></span>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+// Etapas na ordem do fluxo. "rotulo" é a label colocada pelos workflows (etapa:<rotulo>).
+const ETAPAS = [
+  { rotulo: "pre-analise",   nome: "Pré-análise",   ic: "🔎", pct: 10 },
+  { rotulo: "analise",       nome: "Análise",       ic: "🧠", pct: 25 },
+  { rotulo: "implementacao", nome: "Implementação", ic: "👨‍💻", pct: 50 },
+  { rotulo: "commit",        nome: "Commit",        ic: "📦", pct: 70 },
+  { rotulo: "pull-request",  nome: "Pull Request",  ic: "🔀", pct: 85 },
+  { rotulo: "code-review",   nome: "Code Review",   ic: "🧐", pct: 95 },
+];
+const ATUALIZAR_A_CADA_MS = 60_000;
+
+// ---------- armazenamento local (pode falhar em navegação privada) ----------
+const guardar = {
+  ler(k){ try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  gravar(k,v){ try { localStorage.setItem(k,v); } catch {} },
+  apagar(k){ try { localStorage.removeItem(k); } catch {} },
+};
+let REPO = guardar.ler("benezi.repo") || "benezi-dev/novo-sistema-pizzaria-benezi";
+let TOKEN = guardar.ler("benezi.token");
+let abaAtual = "andamento";
+let dados = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nomesLabels = it => it.labels.map(l => (typeof l === "string" ? l : l.name).toLowerCase());
+const tem = (it, nome) => nomesLabels(it).includes(nome);
+const etapaDe = it => {
+  const l = nomesLabels(it).find(n => n.startsWith("etapa:"));
+  return l ? ETAPAS.findIndex(e => e.rotulo === l.slice(6)) : -1;
+};
+function tempo(iso){
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 60) return "agora";
+  if (s < 3600) return Math.floor(s/60) + " min";
+  if (s < 86400) return Math.floor(s/3600) + " h";
+  return Math.floor(s/86400) + " d";
+}
+
+// ---------- API do GitHub (só GET) ----------
+let restante = "";
+async function api(caminho){
+  const r = await fetch("https://api.github.com/" + caminho, {
+    headers: { "Authorization": "Bearer " + TOKEN, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+    cache: "no-store",
+  });
+  restante = r.headers.get("x-ratelimit-remaining") || restante;
+  if (!r.ok) { const e = new Error("HTTP " + r.status + " em " + caminho); e.status = r.status; throw e; }
+  return r.json();
+}
+const opcional = p => api(p).catch(() => null); // ex.: token sem permissão de Actions
+
+async function carregar(){
+  const R = "repos/" + REPO;
+  const [abertas, fechadas, prs, runs] = await Promise.all([
+    api(R + "/issues?state=open&per_page=100&sort=updated"),
+    api(R + "/issues?state=closed&per_page=30&sort=updated"),
+    api(R + "/pulls?state=open&per_page=100"),
+    opcional(R + "/actions/runs?per_page=15"),
+  ]);
+  const soIssues = l => l.filter(i => !i.pull_request);
+  const issues = soIssues(abertas);
+
+  // PR de cada issue: "Closes #N" no corpo ou branch claude/issue-N-*
+  const prDaIssue = {};
+  for (const p of prs) {
+    const m = (p.body || "").match(/(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i)
+           || (p.head?.ref || "").match(/^claude\/issue-(\d+)-/);
+    if (m) prDaIssue[m[1]] = p;
+  }
+
+  const executando = issues.filter(i => tem(i,"claude"));
+  const bloqueadas = issues.filter(i => tem(i,"bloqueada"));
+  const naFila = issues.filter(i => (tem(i,"pronta") || tem(i,"condicional")) && !tem(i,"claude") && !tem(i,"bloqueada"));
+  const emReview = issues.filter(i => etapaDe(i) === 5);
+  const aprovadosIA = prs.filter(p => p.labels.some(l => l.name === "CodeReviewIA"));
+  const andamento = issues.filter(i => etapaDe(i) >= 0 || tem(i,"claude"))
+    .sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+  // Issue em destaque: a que está com "claude"; senão a mais recente com etapa.
+  const destaque = executando[0] || andamento[0] || null;
+  let ultimoComentario = null;
+  if (destaque && destaque.comments > 0) {
+    const cs = await opcional(`${R}/issues/${destaque.number}/comments?per_page=100`);
+    if (cs && cs.length) ultimoComentario = cs[cs.length - 1];
+  }
+
+  const falhas = (runs?.workflow_runs || []).filter(w => w.conclusion === "failure").slice(0, 2);
+
+  dados = { issues, fechadas: soIssues(fechadas), prs, prDaIssue, executando, bloqueadas, naFila, emReview,
+            aprovadosIA, andamento, destaque, ultimoComentario, falhas, runsOk: !!runs };
+}
+
+// ---------- desenho ----------
+function desenharNumeros(){
+  const d = dados;
+  const n = (v, t, cls="") => `<div class="num ${cls}"><b>${v}</b><span>${t}</span></div>`;
+  $("numeros").innerHTML =
+    n(d.naFila.length, "Na fila") +
+    n(d.executando.length, "Executando") +
+    n(d.emReview.length, "Code review") +
+    n(d.aprovadosIA.length, "Aguard. seu merge", d.aprovadosIA.length ? "ok" : "") +
+    n(d.prs.length, "PRs abertos") +
+    n(d.bloqueadas.length, "Bloqueadas", d.bloqueadas.length ? "alerta" : "");
+}
+
+function desenharAtivo(){
+  const i = dados.destaque;
+  if (!i) { $("ativo").innerHTML = `<div class="ativo vazio">Nenhuma issue em andamento agora. 😴</div>`; return; }
+  const e = etapaDe(i);
+  const pr = dados.prDaIssue[i.number];
+  const bloq = tem(i,"bloqueada");
+  const pct = e >= 0 ? ETAPAS[e].pct : 5;
+  const aprovado = pr && pr.labels.some(l => l.name === "CodeReviewIA");
+  const c = dados.ultimoComentario;
+  $("ativo").innerHTML = `
+    <a class="ativo" style="display:block;color:inherit" href="${esc(i.html_url)}" target="_blank" rel="noopener">
+      <div class="topo">#${i.number} · ${e >= 0 ? esc(ETAPAS[e].nome) : "na fila"} · há ${tempo(i.updated_at)}</div>
+      <div class="titulo"><h3>${esc(i.title)}</h3><span class="pct">${pct}%</span></div>
+      <div>
+        ${bloq ? '<span class="pilula" style="color:var(--vermelho)">bloqueada</span>' : ""}
+        ${pr ? `<span class="pilula" style="color:var(--azul)">PR #${pr.number}</span>` : ""}
+        ${aprovado ? '<span class="pilula" style="color:var(--verde)">IA: Sim ✓</span>' : ""}
+        ${(i.assignees||[]).map(a => `<span class="pilula" style="color:var(--amarelo)">${esc(a.login)}</span>`).join("")}
+      </div>
+      ${pr ? `<div class="topo" style="margin-top:6px">${esc(pr.head.ref)}</div>` : ""}
+      <div class="barra"><i style="width:${pct}%;${bloq ? "background:var(--vermelho)" : ""}"></i></div>
+    </a>
+    ${c ? `<div class="aviso"><b>${esc(c.user.login)}</b> (há ${tempo(c.created_at)}): ${esc(resumo(c.body))}</div>` : ""}`;
+}
+function resumo(t){
+  return String(t||"").replace(/<!--[\s\S]*?-->/g,"").replace(/[#*_`>|]/g,"").replace(/\s+/g," ").trim().slice(0,180) + (String(t||"").length > 180 ? "…" : "");
+}
+
+function desenharAvisos(){
+  const f = dados.falhas;
+  $("avisos").innerHTML = f.map(w =>
+    `<a class="aviso" style="display:block" href="${esc(w.html_url)}" target="_blank" rel="noopener">
+       <b>⚠️ ${esc(w.name)}</b> falhou há ${tempo(w.updated_at)} — ${esc(w.display_title || "")}</a>`).join("");
+}
+
+function desenharArco(){
+  const i = dados.destaque;
+  const e = i ? etapaDe(i) : -1;
+  const bloq = i && tem(i,"bloqueada");
+  // 6 posições num semicírculo (em % da caixa), do canto inferior esquerdo ao inferior direito.
+  const pos = ETAPAS.map((_, k) => {
+    const ang = Math.PI * (1 - k / (ETAPAS.length - 1)); // 180° → 0°
+    return { x: 50 + 41 * Math.cos(ang), y: 72 - 60 * Math.sin(ang) };
+  });
+  const atual = e >= 0 ? ETAPAS[e] : null;
+  $("arco").innerHTML = `
+    <svg class="linha" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <path d="M ${pos[0].x} ${pos[0].y} A 41 60 0 0 1 ${pos[5].x} ${pos[5].y}" fill="none" stroke="#5a4636" stroke-width=".6" vector-effect="non-scaling-stroke"/>
+    </svg>
+    ${ETAPAS.map((et, k) => {
+      const cls = e < 0 ? "" : k < e ? "feito" : k === e ? (bloq ? "bloq" : "atual") : "";
+      return `<div class="no ${cls}" style="left:${pos[k].x}%;top:${pos[k].y}%"><div class="bola">${et.ic}</div><small>${et.nome}</small></div>`;
+    }).join("")}
+    <div class="centro">
+      <div class="bola">${atual ? atual.ic : "🤖"}${atual ? `<em>${atual.pct}%</em>` : ""}</div>
+      <b>${atual ? (bloq ? "⛔ " : "🚀 ") + atual.nome : "Aguardando"}</b>
+    </div>`;
+}
+
+const ABAS = {
+  andamento: ["Em andamento", () => dados.andamento],
+  fila:      ["Na fila",      () => dados.naFila],
+  bloq:      ["Bloqueadas",   () => dados.bloqueadas],
+  merge:     ["Seu merge",    () => dados.aprovadosIA],
+  feitas:    ["Concluídas",   () => dados.fechadas.filter(i => i.state_reason !== "not_planned")],
+};
+function desenharLista(){
+  $("abas").innerHTML = Object.entries(ABAS).map(([k,[t,f]]) =>
+    `<button data-aba="${k}" class="${k===abaAtual?"sel":""}">${t} (${f().length})</button>`).join("");
+  const itens = ABAS[abaAtual][1]();
+  if (!itens.length) { $("lista").innerHTML = `<div class="vazio">Nada aqui.</div>`; return; }
+  $("lista").innerHTML = itens.slice(0, 40).map(it => {
+    const ehPR = abaAtual === "merge";
+    const e = ehPR ? -1 : etapaDe(it);
+    const ic = ehPR ? "✅" : abaAtual === "feitas" ? "✔️" : tem(it,"bloqueada") ? "⛔" : e >= 0 ? ETAPAS[e].ic : "📝";
+    const et = ehPR ? "IA: Sim" : abaAtual === "feitas" ? "fechada" : e >= 0 ? ETAPAS[e].nome : "";
+    return `<a class="item" href="${esc(it.html_url)}" target="_blank" rel="noopener" style="color:inherit">
+      <span class="ic">${ic}</span>
+      <span class="tx"><div>#${it.number} ${esc(it.title)}</div><small>há ${tempo(it.updated_at)}</small></span>
+      <span class="et">${esc(et)}</span></a>`;
+  }).join("");
+}
+
+function desenhar(){
+  desenharNumeros(); desenharAtivo(); desenharAvisos(); desenharArco(); desenharLista();
+  $("atualizado").textContent = "atualizado " + new Date().toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"});
+  $("limite").textContent = (restante ? `API: ${restante} restantes` : "") + (dados.runsOk ? "" : " · sem permissão de Actions");
+}
+
+// ---------- ciclo ----------
+let timer = null;
+async function atualizar(){
+  try {
+    $("atualizado").textContent = "atualizando…";
+    await carregar();
+    desenhar();
+  } catch (e) {
+    if (e.status === 401 || e.status === 403 || e.status === 404) {
+      mostrarConfig("Token inválido ou sem acesso ao repositório (" + e.message + ").");
+      return;
+    }
+    $("atualizado").textContent = "erro: " + e.message;
+  }
+}
+function iniciar(){
+  $("config").hidden = true; $("painel").hidden = false;
+  clearInterval(timer);
+  atualizar();
+  timer = setInterval(() => { if (!document.hidden) atualizar(); }, ATUALIZAR_A_CADA_MS);
+}
+function mostrarConfig(msg=""){
+  clearInterval(timer);
+  $("painel").hidden = true; $("config").hidden = false;
+  $("cfgRepo").value = REPO; $("cfgErro").textContent = msg;
+}
+
+$("btnSalvar").onclick = () => {
+  const t = $("cfgToken").value.trim(), r = $("cfgRepo").value.trim();
+  if (!t || !/^[\w.-]+\/[\w.-]+$/.test(r)) { $("cfgErro").textContent = "Preencha o token e o repositório (dono/nome)."; return; }
+  TOKEN = t; REPO = r; guardar.gravar("benezi.token", t); guardar.gravar("benezi.repo", r);
+  $("cfgToken").value = "";
+  iniciar();
+};
+$("btnAtualizar").onclick = atualizar;
+$("btnSair").onclick = () => { guardar.apagar("benezi.token"); TOKEN = ""; mostrarConfig(); };
+$("abas").onclick = ev => { const b = ev.target.closest("button[data-aba]"); if (b) { abaAtual = b.dataset.aba; desenharLista(); } };
+document.addEventListener("visibilitychange", () => { if (!document.hidden && TOKEN) atualizar(); });
+
+TOKEN ? iniciar() : mostrarConfig();
+</script>
+</body>
+</html>
